@@ -27,28 +27,40 @@ class DriveSquareNode(object):
         self.dist_edge = 2.0 # meters
         # self.dist_travelled = 0.0 # meters
 
-    def getKey(self):
-        settings = termios.tcgetattr(sys.stdin)
+    # def getKey(self):
+    #     # print("running getkey")
+    #     settings = termios.tcgetattr(sys.stdin)
+    #     tty.setraw(sys.stdin.fileno())
+    #     s = select.select([sys.stdin], [], [], 0)
+    #     # print(s)
+    #     # key = None
+    #     # if len(s[0]) != 0:
+    #     #     print()
+    #     key = sys.stdin.read(1)
+    #         # print("read key")
+    #     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+    #     # print('termios')
+    #     return key
 
-        tty.setraw(sys.stdin.fileno())
-
-        select.select([sys.stdin], [], [], 0)
-        key = sys.stdin.read(1)
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-        return key
+    def keyWasPressed(self):
+        return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
 
     def callback_func(self, msg):
         # current position
+        # print("callback function called")
         self.current_pos[0] = msg.pose.pose.position.x
         self.current_pos[1]= msg.pose.pose.position.y
 
     def run(self):
         r = rospy.Rate(10)
+        old_settings = termios.tcgetattr(sys.stdin)
+        tty.setraw(sys.stdin.fileno())
         print("Initialized node.")
         while not rospy.is_shutdown():
-            self.key = self.getKey()
+            # print("running main loop")
+            if self.keyWasPressed():
+                self.key = sys.stdin.read(1)
             if self.key == '\x03': print ("Shutting down node"); break
-
             # toggle start of square
             if not self.start and self.key == "\r":
                 self.start = True
@@ -62,8 +74,8 @@ class DriveSquareNode(object):
                 else: print("Stopping Robot.")
 
             # flight code below
-            print(self.start)
-            print(self.active)
+            # print(self.start)
+            # print(self.active)
             if self.start and self.active:
                 twist_msg = Twist()
 
@@ -90,7 +102,7 @@ class DriveSquareNode(object):
 
             # self.pub.publish(MsgType(linear=Vector3(x=self.desired_velocity)))
             r.sleep()
-
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
         # if self.key == '\x03': print("Shutting down node.")
 
 
