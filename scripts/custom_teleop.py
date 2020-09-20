@@ -12,7 +12,8 @@ class CustomTeleopNode(object):
         rospy.init_node('custom_teleop_node')
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         self.key = None
-        # self.desired_velocity = 0.3
+        self.des_linear_vel = 0.0
+        self.des_angular_vel = 0.0
 
     def run(self):
         r = rospy.Rate(10)
@@ -24,6 +25,8 @@ class CustomTeleopNode(object):
             twist_msg = self.keyToTwist()
 
             if twist_msg is not None:
+                print("linear vel: ", self.des_linear_vel)
+                print("angular vel: ", self.des_angular_vel)
                 self.pub.publish(twist_msg)
             r.sleep()
 
@@ -35,24 +38,49 @@ class CustomTeleopNode(object):
         return key
 
     def keyToTwist(self):
-        des_x = None
+        # Forward
         if self.key == "w":
-            des_x = 0.3
+            self.des_linear_vel += 0.1
+        # Backward
+        elif self.key == "s":
+            self.des_linear_vel -= 0.1
+        # Right
+        elif self.key == "d":
+            if self.des_angular_vel > 0:
+                self.des_angular_vel = 0
+            else:
+                self.des_angular_vel -= 0.1
+        # Left
+        elif self.key == "a":
+            if self.des_angular_vel < 0:
+                self.des_angular_vel = 0
+            else:
+                self.des_angular_vel += 0.1
+        # ESTOP
         elif self.key == " ":
-            des_x = 0.0
-
-        if des_x is None:
-            return None
+            self.des_linear_vel = 0.0
+            self.des_angular_vel = 0.0
+        # Invalid
         else:
-            twist_msg = Twist(linear=Vector3(x=des_x))
-            return twist_msg
+            return None
+
+        # Linear velocity limits
+        if self.des_linear_vel > 0.5:
+            self.des_linear_vel = 0.5
+        elif self.des_linear_vel < -0.5:
+            self.des_linear_vel = -0.5
+
+        # Angular velocity limits
+        if self.des_angular_vel > 1.0:
+            self.des_angular_vel = 1.0
+        elif self.des_angular_vel < -1.0:
+            self.des_angular_vel = -1.0
+
+
+        twist_msg = Twist(linear=Vector3(x=self.des_linear_vel), angular=Vector3(z=self.des_angular_vel))
+        return twist_msg
 
 settings = termios.tcgetattr(sys.stdin)
-# key = None
-
-# while key != '\x03':
-#     key = getKey()
-#     print("got key:", key)
 
 if __name__ == '__main__':
     teleop = CustomTeleopNode()
