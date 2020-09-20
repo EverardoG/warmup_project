@@ -25,22 +25,6 @@ class DriveSquareNode(object):
         self.current_pos = np.array([None, None]) # [x, y]
 
         self.dist_edge = 2.0 # meters
-        # self.dist_travelled = 0.0 # meters
-
-    # def getKey(self):
-    #     # print("running getkey")
-    #     settings = termios.tcgetattr(sys.stdin)
-    #     tty.setraw(sys.stdin.fileno())
-    #     s = select.select([sys.stdin], [], [], 0)
-    #     # print(s)
-    #     # key = None
-    #     # if len(s[0]) != 0:
-    #     #     print()
-    #     key = sys.stdin.read(1)
-    #         # print("read key")
-    #     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-    #     # print('termios')
-    #     return key
 
     def keyWasPressed(self):
         return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
@@ -55,23 +39,23 @@ class DriveSquareNode(object):
         r = rospy.Rate(10)
         old_settings = termios.tcgetattr(sys.stdin)
         tty.setraw(sys.stdin.fileno())
-        print("Initialized node.")
+        print("Initialized node.\r")
         while not rospy.is_shutdown():
             # print("running main loop")
             if self.keyWasPressed():
                 self.key = sys.stdin.read(1)
-            if self.key == '\x03': print ("Shutting down node"); break
+            if self.key == '\x03': print ("Shutting down node\r"); break
             # toggle start of square
             if not self.start and self.key == "\r":
                 self.start = True
                 self.active = True
                 self.init_pos = self.current_pos
-                print("Robot is starting square.")
+                print("Robot is starting square.\r")
             # toggle whether robot is active
             if self.start and self.key == " ":
                 self.active = not self.active
-                if self.active: print("Activating Robot.")
-                else: print("Stopping Robot.")
+                if self.active: print("Activating Robot.\r")
+                else: print("Stopping Robot.\r")
 
             # flight code below
             # print(self.start)
@@ -85,8 +69,8 @@ class DriveSquareNode(object):
                 else:
                     twist_msg.linear.x = 0.0
 
-                print("dist_travelled: ", dist_travelled)
-                print("dist_edge: ", self.dist_edge)
+                # print("dist_travelled: ", dist_travelled)
+                # print("dist_edge: ", self.dist_edge)
                 self.pub.publish(twist_msg)
 
                 # check current distance travelled
