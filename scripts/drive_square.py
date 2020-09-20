@@ -42,6 +42,7 @@ class DriveSquareNode(object):
         print("Initialized node.\r")
         while not rospy.is_shutdown():
             # print("running main loop")
+            self.key = None
             if self.keyWasPressed():
                 self.key = sys.stdin.read(1)
             if self.key == '\x03': print ("Shutting down node\r"); break
@@ -49,25 +50,24 @@ class DriveSquareNode(object):
             if not self.start and self.key == "\r":
                 self.start = True
                 self.active = True
-                self.init_pos = self.current_pos
+                self.init_pos = self.current_pos.copy()
                 print("Robot is starting square.\r")
             # toggle whether robot is active
             if self.start and self.key == " ":
                 self.active = not self.active
-                if self.active: print("Activating Robot.\r")
-                else: print("Stopping Robot.\r")
+                if self.active: print("Continuing Robot.\r")
+                else: print("Pausing Robot.\r")
 
-            # flight code below
-            # print(self.start)
-            # print(self.active)
             if self.start and self.active:
                 twist_msg = Twist()
-
+                # print("Current Pos x: ", self.current_pos[0], " | y: ", self.current_pos[1],'\r')
+                # print("Init Pos x: ", self.init_pos[0], " | y: ", self.init_pos[1],'\r')
                 dist_travelled = np.linalg.norm(self.current_pos - self.init_pos)
                 if dist_travelled < self.dist_edge:
                     twist_msg.linear.x = 0.3
                 else:
                     twist_msg.linear.x = 0.0
+                    print("Finished edge.\r")
 
                 # print("dist_travelled: ", dist_travelled)
                 # print("dist_edge: ", self.dist_edge)
