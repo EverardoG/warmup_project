@@ -1,0 +1,1 @@
+I ran into some trouble uploading bag files to github. I moved them all to a [Google Drive Folder here](https://drive.google.com/drive/folders/1I94PiKuXVBduMdnsck4vtuKA1GnblogK?usp=sharing) for now.
