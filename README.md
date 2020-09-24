@@ -1,12 +1,44 @@
 # CompRobo Warm-Up Project
-This is the base repo for the Olin Computational Robotics warmup project.
+This is my fork of the repo for the Olin Computational Robotics warmup project.
 
 In `scripts`, you'll find all the scripts relavent to this project.
 In `bags`, you'll find a `README.md` linking to a Google Drive Folder with the relavent ROS bags.
 
-## Preliminary Wall Follower Write Up
+In this write-up, you'll find detailed explanations of each behavoir that I implemented.
 
-My wall follower code is found in `scripts/wallfollower.py`. Here is a helpful visual which helps to illustrate how the code works.
+## Robot Teleop
+### Objective
+Design a teleop mode for the Neato that allows a user to drive the Neato manually.
+
+### W A S D Control
+The code for this is contained in `scripts/custom_teleop.py`.
+
+I decided to approach this problem like I was designing a control scheme for a video game Neato. The vast majority of modern computer games that require moving an object via a keyboard utilize the `W`, `A`, `S`, and `D` keys as though they were `Left`, `Down`, `Right`, and `Up` keys, resepctively. My goal was to mimic this behaviour with the Neato.
+
+![Custom Teleop Demo](gifs/custom_teleop.gif)
+
+You can see here what driving with this teleop mode looks like. I hoped to make the teleoperation of the Neato smoother and more intuitive than it is with ROS's built-in `teleop_twist_keyboard`. It's certainly far more intuitive to me as someone who is used to `W`, `A`, `S`, `D` control, so I was happy with the implementation.
+
+The primary drawbacks revolve around how this controlller is reading the keyboard input. The approach I took for keyboard input leaned heavily on the starter code provided by the professors. You can see how this is done in the `getKey()` method. The drawback of the `getKey()` method is that it has built-in debouncing. For example, if I hold down the `W` key while driving, the teleop only takes the first `W`, and waits a preset amount of time before accepting any more `W`s. While this feature is useful for inputs where a user wants to simply hit a key once and leave it be, it presents a problem for creating a smooth driving experience. I specifically designed this controller to ramp up the speed of the Neato according to how long a given key was pressed. For instance, if I held down `W`, I would expect the Neato to start moving forward, and then ramp up its speed as I continued to hold down `W`. With the built-in debouncing, when I try this, it feels like there's a lag between me holding a key down and the Neato actually speeding up accordingly.
+
+If I spent more time on this section, I would find a different way to read keyboard inputs without built-in debouncing, and I would take into account timing when a key was held down. For instance, if I held down `W`, the Neato would speed up at a set rate, not just every time the controller read a `W`.
+
+## Driving in a Square
+### Objective
+Drive on the edge of a 1 meter x 1 meter square.
+
+### Proportional Distance and Angle Control
+
+I decided to break this problem up into two categories
+
+## Wall Following
+### Objective
+Detect and drive next to a wall.
+
+### Iteration 0: Two-Point Perception
+
+#### Overall Design
+This iteration is found in `scripts/wallfollower_0.py`. Here is a helpful visual which helps to illustrate how the code works.
 
 <img src="pics/wall.jpg" alt="drawing" height="400"/>
 
@@ -15,6 +47,13 @@ The `WallFollowerNode` grabs two distances from its scan, which we will call `d1
 `angular_velocity = proportional_constant * (d1 - d2)`
 
 This simple approach was surprisingly robust against perturbations to the Neato, including both rotating the Neato towards or away from the wall, as well as moving the Neato closer or further away from the wall. So long as the `WallFollowerNode` could still "see" one of the points, the Neato could make its way back to the wall.
+#### Performance
+
+![Wall Follower Iteration 0 Demo](gifs/wall_follow_0.gif)
+
+Even with just two points, we see that the `WallFollowerNode` can successfully drive the Neato alongside a straight wall, and even handle an outer corner. However, we see at the end that this approach is not very robust against sharp outer corners. 
+
+#### Edge Cases and Limitations
 
 To handle the edge case where points on the wall were too far away to show up in the lidar scan, the `WallFollowerNode` assumed that any points it couldn't see where `1,000` meters away, which was likely why the Neato could still find its way back to the wall whenever one of the points was too far away. The massive distance made it so that the angular velocity controller would quickly correct the Neato if it was too far away. This approach also seemed to make the wall follower code slighly more robust at turning around outer corners, where the Neato would turn sharply, perceiving the corner as a wall where the front-most part was far away, and the back-most part was close. However, this was also where the simplicity of this controller began hitting its limits. The Neato could successfully make an outer turn, but because of the lack of information about the corner, the controller would wiggle the Neato choatically through the turn. Part of the reason why is illustrated here.
 
@@ -24,4 +63,54 @@ The primary limitations of this controller revolve around its lack of informatio
 
 This controller could be improved with the addition of more information from the lidar scan, making it so that the Neato can more robustly follow curvy walls that aren't well approximated by two points. This would also give the Neato more context around turning corners, and could make turning around outer corners smoother. The addition of information about what is directly in front of the Neato through the points in the front of the lidar scan would make it possible for the Neato to even handle inner corners without crashing. Further, the proportional controller itself could be upgraded to PID for smoother course corrections in general.
 
-I originally intended to iterate further on this wall follower control scheme, but due to various technical difficulties and time constraints, I'll more likely direct that energy to remaining parts of this project.
+<!-- I originally intended to iterate further on this wall follower control scheme, but due to various technical difficulties and time constraints, I'll more likely direct that energy to remaining parts of this project. -->
+
+### Iteration 1: Averaging Several Points
+This iteration is found in `scripts/wallfollower_1.py`. Here is a helpful visual which helps to illustrate how the code works.
+
+<!-- <img src="pics/wall.jpg" alt="drawing" height="400"/> -->
+<img alt="Iteration 1 Drawing" height="400"/>
+
+The `WallFollowerNode` grabs a subselection of points to the right of the Neato from its scan, which it stores in what we will call vector `P`. The number of points, the center of the subselection, and the range of the subselection can all be easily modified in software. Any points in the specified range that were too far for the lidar to measure are not included in the subselection.
+
+This makes it so that the `WallFollowerNode` now has a lot more information about what's next to the Neato, and can more accurately direct the Neato around corners, which are now approximated as lines. Instead of taking differences between points, this design approximates a line from the subselected points, finds the slope, and uses that to proportionally control the Neato's heading. We can represent this as follows:
+
+`angular_velocity = proportional_constant * (average(P_x) / average(P_y))`
+
+where:
+
+`V_x` is the x position of subselected points
+
+`V_y` is the corresponding y position of subselected points
+
+This approach improved the overall robustness of the `WallFollowerNode`, allowing it to better navigate corners.
+
+#### Performance
+
+![Wall Follower Iteration 1 Demo](gifs/wall_follow_1.gif)
+
+We see the same level of robustness when the Neato is following a straight wall, and far more robustness against outer corners. The `WallFollowerNode` successfully drives the Neato around a sharp turn. However, the `WallFollowerNode` does not take into account the rest of the Neato's surroudnings, as demonstrated by the crash at he end.
+
+#### Edge Cases and Limitations
+
+This control scheme simply does not take into account enough information about the Neato's surroundings to be able to successfully navigate inside corners. This controller could also face challenges attempting to navigate a wall with lots of large bumps or corners. While the `WallFollowerNode` for the most part abstracts any wall into a line, and could easily thus navigate any curvy or bumpy walls as though they were straight, all of the parameters involved in creating that abstraction are user-defined. I've included an example drawing to illustrate how the parameters used to subselect points for line approximation could largley impact the Neato's behavior.
+
+#### Iteration 2: Don't Crash
+This iteration is found in `scripts/wallfollower_2.py`. Here is a helpful visual which helps to illustrate how the code works.
+
+<!-- <img src="pics/wall.jpg" alt="drawing" height="400"/> -->
+<img alt="Iteration 2 Drawing" height="400"/>
+
+The `WallFollowerNode` behaves almost exactly as it does for Iteration 1. The key difference is that now, the wall follower switches between two states, "wall following" and "turning left". In addition to subselecting points for line approximation, the `WallFollowerNode` also checks the front-most point in the lidar scan to determine whether or not the Neato is about to crash into a wall. If the front-most point's distance drops below a certain threshold, the `WallFollerNode` takes evasive action and switches from its "wall following" state to it's "turning left" state. Once the front-most point is far enough away so that its distance goes above the threshold, the `WallFollowerNode` automatically switches back to "wall following".
+
+#### Performance
+
+![Wall Follower Iteration 2 Demo](gifs/wall_follow_2.gif)
+
+This iteration completely outperforms the previous iterations. The `WallFollowerNode` succesfully directs the Neato around both inner and outer corners. It even performed robustly enough to outline a whole letter!
+
+#### Edge Cases and Limitations
+I've mostly been testing these iterations in closed environments where I have complete control over what objects will be around the Neato at any given time. Were I testing these iterations in an open environment, the Neato could behave in unexpected ways. No consideration has been given to moving obstacles, smaller objects below the Neato's lidar blocking the Neato, or a host of other challenges that the Neato might encounter in the real world.
+
+The smoothness of this controller is limited by the fact that it's proportional, so the controller cannot be critically damped. This is further made difficult by the fact that the Neato has a wide range of possible turn angles, where some times it has to only slightly adjust its heading and other times it has to make a sharp turn around a corner. The proportional controller is a compromise between enabling the Neato to make sharp enough turns to not miss corners and not overcorrecting when the heading needs only a slight adjustment. A much smoother controller would utilize PID control or another creative, non-linear method.
+
