@@ -111,9 +111,9 @@ class WallFollowNode(object):
         xmin, xmax = min(xs), max(xs)
         pfit, stats = Polynomial.fit(xs, ys, 1, full=True, window=(xmin, xmax), domain=(xmin, xmax))
         _, slope = pfit
-        print("slope: ", slope, '\r')
-        print("tan slope: ", np.arctan(slope), '\r')
-        print("desired angle: ", np.arctan(slope), '\r')
+        # print("slope: ", slope, '\r')
+        # print("tan slope: ", np.arctan(slope), '\r')
+        # print("desired angle: ", np.arctan(slope), '\r')
 
         # Turn that into an angle
         self.desired_angle = np.arctan(slope) * 180.0/3.14
@@ -128,6 +128,7 @@ class WallFollowNode(object):
         print("Initialized node.\r")
         print("Hit ENTER to begin the run\r")
         while not rospy.is_shutdown():
+            # print("hearbeat\r")
             self.key = None
             if self.keyWasPressed():
                 self.key = sys.stdin.read(1)
@@ -156,13 +157,18 @@ class WallFollowNode(object):
                     # Run Proportional Control.
                     # desired_angle = 0  or 360 if robot is properly aligned
                     print(self.desired_angle,'\r')
-                    twist_msg.angular.z = 0.015 * self.desired_angle
+                    if self.desired_angle < 0:
+                        twist_msg.angular.z = 0.05 * self.desired_angle
+                    elif self.desired_angle > 0:
+                        twist_msg.angular.z = 0.015 * self.desired_angle
+
+                    # print(twist_msg.angular.z, '\r')
                     # if (self.desired_angle > 0.0 and self.desired_angle <= 180.0):
                     #     twist_msg.angular.z = 0.01 * self.desired_angle
                     # else:
                     #     twist_msg.angular.z = 0.01 * self.desired_angle
                     
-                    print("twist_msg.angular.z",twist_msg.angular.z,'\r')
+                    # print("twist_msg.angular.z",twist_msg.angular.z,'\r')
                     # Enforce limits on angular velocity
                     if twist_msg.angular.z > self.max_angular_speed:
                         twist_msg.angular.z = self.max_angular_speed
@@ -188,8 +194,11 @@ class WallFollowNode(object):
 
             elif not self.active:
                 self.pub.publish(Twist())
-            r.sleep()
 
+            r.sleep()
+            # print("past sleeping\r")
+
+        # print("rospy was shutdown")
         # Set terminal back to normal and stop the robot
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
         self.pub.publish(Twist())
