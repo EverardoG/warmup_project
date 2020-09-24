@@ -31,9 +31,10 @@ class WallFollowNode(object):
         return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
 
     def callback_func(self, msg):
-        # update both points
-        self.point_1 = msg.ranges[315]
-        self.point_2 = msg.ranges[225]
+        # update both points if lidar scan is valid
+        if not all(np.isinf(range_) for range_ in msg.ranges):
+            self.point_1 = msg.ranges[315]
+            self.point_2 = msg.ranges[225]
 
     def run(self):
         r = rospy.Rate(10)
@@ -58,7 +59,7 @@ class WallFollowNode(object):
                 else: print("Pausing Robot.\r")
 
             # flight code for wall following
-            if self.start and self.active:
+            if self.start and self.active and self.point_1 is not None and self.point_2 is not None:
                 twist_msg = Twist()
 
                 # Check the difference between the two points
