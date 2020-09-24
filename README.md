@@ -17,6 +17,8 @@ I decided to approach this problem like I was designing a control scheme for a v
 
 ![Custom Teleop Demo](gifs/custom_teleop.gif)
 
+### If I had more time...
+
 You can see here what driving with this teleop mode looks like. I hoped to make the teleoperation of the Neato smoother and more intuitive than it is with ROS's built-in `teleop_twist_keyboard`. It's certainly far more intuitive to me as someone who is used to `W`, `A`, `S`, `D` control, so I was happy with the implementation.
 
 The primary drawbacks revolve around how this controlller is reading the keyboard input. The approach I took for keyboard input leaned heavily on the starter code provided by the professors. You can see how this is done in the `getKey()` method. The drawback of the `getKey()` method is that it has built-in debouncing. For example, if I hold down the `W` key while driving, the teleop only takes the first `W`, and waits a preset amount of time before accepting any more `W`s. While this feature is useful for inputs where a user wants to simply hit a key once and leave it be, it presents a problem for creating a smooth driving experience. I specifically designed this controller to ramp up the speed of the Neato according to how long a given key was pressed. For instance, if I held down `W`, I would expect the Neato to start moving forward, and then ramp up its speed as I continued to hold down `W`. With the built-in debouncing, when I try this, it feels like there's a lag between me holding a key down and the Neato actually speeding up accordingly.
@@ -28,8 +30,27 @@ If I spent more time on this section, I would find a different way to read keybo
 Drive on the edge of a 1 meter x 1 meter square.
 
 ### Proportional Distance and Angle Control
+The code for this is contained in `scripts/drive_square.py`.
 
-I decided to break this problem up into two categories
+I decided to break this problem up into two categories: lines, and corners. At any given point along the edge of the square, the Neato will either be on a corner, where it has to turn to face the next line of the square, or on a line, where it has to drive until it hits a corner.
+
+This makes it so that the Neato will normally be in one of two primary states, aptly named `line` and `corner`. The only exception is that once the Neato has completed the square, I wanted it to turn so that it faces the direction it faced when starting the square, and then stop moving. I formalized this into the following state machine.
+
+<img src="pics/square_state.png" alt="drawing" height="500"/>
+
+When the Neato is driving in its `line` state, it needs to drive straight forward, and only stop once it has driven 1 meter, exactly. For precision, I decided to tackle this by creating a proportional controller that relies on the Neato's built-in odometry. The Neato records where it began the line, and drives foward until its distance from its starting point is ever-so-slightly greater than 1 meter. I formalize the controller here.
+
+`linear_velocity` = `proportional_constant` (`1.0 m` - `distance_travelled`) + `0.001`
+
+The primary drawback of using a proprtional controller for tackling this problem was that I had to balance potentially overshooting the desired distance and moving too slowly towards the desired distance. I experimented with my proportional constant until I found a balance I was happy with. Since I leaned towards moving too slowly, the Neato technically only approaches its endpoint, but never actually makes it there. I worked around this by adding a constant `0.001 meters / second` to the velocity. This makes it so that once the Neato is practically at the point, the velocity gets an extra nudge that gaurantees that the Neato converges on the point.
+
+Once the Neato hits its intended distance of `1.0 m`, it switches state to `corner`, which I tackled similarly to the `line` state. The only difference was that I had to find a way to linearize the angle of the robot. I achieved this by breaking out the edge case where the robot crosses the `0 -> 360` threshold into a special case that takes into account the necessary logic to simplify the angle measurement to how far the Neato had turned since it began turning. This controller is formalized here.
+
+`angular_velocity` = `proportional_constant` * (`90.0 degrees` - `angle_travelled`) + `0.01`
+
+### If I had more time...
+
+My code for this objective works quite well for its intended purpose. I spent some extra time generalizing this approach to work for any regular n-sided polygon, just out of curiousity. Unfortunately, I didn't follow the golden rule of software development: `Backup early, Backup often`, and lost the code when I reinstalled Ubuntu to fix some technical issues. If I spent more time beyond that, I would challenge myself by trying to make a controller that completed the square (or any regular n-sided polygon) as quickly, and precisely as possible. That would involve a mix of trying to model the Neato's dynamics quantitatively in order to achieve a strong approximation of constants I could plug into a PID controller for critical damping, and experimentally nudging the constants to see if I could improve accuracy, precision, and speed from there.
 
 ## Wall Following
 ### Objective
