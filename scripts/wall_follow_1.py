@@ -30,15 +30,16 @@ class WallFollowNode(object):
         # self.point_1 = None
         # self.point_2 = None
 
-        self.scan_angle = 270 # 270 for right wall, 90 for left
-        self.scan_range = 30
+        self.scan_angle = 250 # 270 for right wall, 90 for left
+        self.scan_range = 60
 
         self.max_angular_speed = 1.0
 
         # Make data containers easily accessible for later
         self.points_r_theta = None # np.zeros((2, self.scan_range))
         self.points_x_y = None # np.zeros((2, self.scan_range))
-        self.desired_angle = None # wall angle
+        # self.desired_angle = None # wall angle
+        self.wall_slope = None
 
     def keyWasPressed(self):
         return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
@@ -50,8 +51,8 @@ class WallFollowNode(object):
         # self.point_2 = msg.ranges[225]
 
         # update point data
-        start_angle = int(self.scan_angle-self.scan_range/2)
-        end_angle = int(self.scan_angle+self.scan_range/2)
+        start_angle = int(self.scan_angle)
+        end_angle = int(self.scan_angle+self.scan_range)
         # print(msg.ranges[start_angle:end_angle],'\r')
         self.points_r_theta = []
         self.points_x_y = []
@@ -116,7 +117,19 @@ class WallFollowNode(object):
         # print("desired angle: ", np.arctan(slope), '\r')
 
         # Turn that into an angle
-        self.desired_angle = np.arctan(slope) * 180.0/3.14
+        print('slope : ', slope,'\r')
+
+        self.wall_slope = slope
+
+        # slope seems to flicker to -0.035 for some strange reason and that's when behavior is unpredictable
+        # if slope > -0.036 and slope < -0.034:
+        #     print('-- Bad slope detected | Diagnostics Report --\r')
+        #     print('xs : ', xs , '\r')
+        #     print('ys : ', ys, '\r')
+        # self.desired_angle = (np.arctan2([slope], [1.0]) * 180.0/3.14)[0]
+        # self.desired_angle = np.arctan(slope) * 180.0/3.14
+        # self.desired_angle = 1
+        # -2.07 keeps coming up no matter what when in arctan mode
         # print(self.desired_angle,'\r')
 
         return True
@@ -149,25 +162,35 @@ class WallFollowNode(object):
                 twist_msg = Twist()
 
                 # Constant linear speed
-                twist_msg.linear.x = 0.3
+                # twist_msg.linear.x = 0.3
+
+                # Turn right if there's no points
+                # twist_msg.angular.z = - 0.3
 
                 # Update the desired angle
                 if self.updateDesiredAngle():
+                    twist_msg.linear.x = 0.3
                     # print(len(self.points_x_y),'\r')
                     # Run Proportional Control.
                     # desired_angle = 0  or 360 if robot is properly aligned
-                    print(self.desired_angle,'\r')
-                    if self.desired_angle < 0:
-                        twist_msg.angular.z = 0.05 * self.desired_angle
-                    elif self.desired_angle > 0:
-                        twist_msg.angular.z = 0.015 * self.desired_angle
+                    # print(self.desired_angle,'\r')
+                    # if self.desired_angle < 0:
+                    #     twist_msg.angular.z = 0.05 * self.desired_angle
+                    # elif self.desired_angle > 0:
+                    #     twist_msg.angular.z = 0.015 * self.desired_angle
 
                     # print(twist_msg.angular.z, '\r')
                     # if (self.desired_angle > 0.0 and self.desired_angle <= 180.0):
                     #     twist_msg.angular.z = 0.01 * self.desired_angle
                     # else:
                     #     twist_msg.angular.z = 0.01 * self.desired_angle
+
+                    # Run proportional control based on slope
+                    twist_msg.angular.z = self.wall_slope
                     
+                    print(self.wall_slope, '|', twist_msg.angular.z,'\r')
+
+
                     # print("twist_msg.angular.z",twist_msg.angular.z,'\r')
                     # Enforce limits on angular velocity
                     if twist_msg.angular.z > self.max_angular_speed:
@@ -175,7 +198,6 @@ class WallFollowNode(object):
 
                     elif twist_msg.angular.z < - self.max_angular_speed:
                         twist_msg.angular.z = - self.max_angular_speed
-
 
                 # # Check the difference between the two points
                 # # turn either left or right proportionally dependent on the difference
