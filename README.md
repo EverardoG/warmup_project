@@ -4,7 +4,7 @@ This is my fork of the repo for the Olin Computational Robotics warmup project.
 In `scripts`, you'll find all the scripts relevant to this project.
 In `bags`, you'll find a `README.md` linking to a Google Drive Folder with the relevant ROS bags.
  
-In this write-up, you'll find detailed explanations of each behavior that I implemented.
+In this write-up, you'll find detailed explanations of each behavior that I implemented, as well as a brief overview of my software architecture, and a reflection on the project. The behaviors include teleop, driving in a square, wall following, human following, obstacle avoidance, and a fun bonus behavior.
  
 ## Robot Teleop
 ### Objective
@@ -220,7 +220,7 @@ One edge case is quite evident in the performance gif. One of the problems with 
 
 Also, with this behavior, I could place a brick wall in front of the Neato and it would literally fly towards it at full speed. This is not very intelligent tackling code.
 
-## Code Structure
+## Software Architecture
 I decided to make each behavior self contained in its own Python script as its own node for this project. Each behavior is an object in Python, and a node in ROS. I experimented with different ways of switching states, at first using an attribute that stored a string with the name of the appropriate state that was checked in the main loop so that the appropriate actions could be taken by the Neato. Then, I upped my game and made the state attribute store a function that _was_ the code for that state. Since Python is dynamically typed, and everything is an object, I was able to set up something like so:
 
 ```
