@@ -17,7 +17,7 @@ I decided to approach this problem like I was designing a control scheme for a v
  
 ![Custom Teleop Demo](gifs/custom_teleop.gif)
  
-### If I had more time...
+###  Edge Cases and Limitations
  
 You can see here what driving with this teleop mode looks like. I hoped to make the teleoperation of the Neato smoother and more intuitive than it is with ROS's built-in `teleop_twist_keyboard`. It's certainly far more intuitive to me as someone who is used to `W`, `A`, `S`, `D` control, so I was happy with the implementation.
  
@@ -48,7 +48,7 @@ Once the Neato hits its intended distance of `1.0 m`, it switches state to `corn
  
 `angular_velocity` = `proportional_constant` * (`90.0 degrees` - `angle_travelled`) + `0.01`
  
-### If I had more time...
+###  Edge Cases and Limitations
  
 My code for this objective works quite well for its intended purpose. I spent some extra time generalizing this approach to work for any regular n-sided polygon, just out of curiosity. Unfortunately, I didn't follow the golden rule of software development: `Backup early, Backup often`, and lost the code when I reinstalled Ubuntu to fix some technical issues. If I spent more time beyond that, I would challenge myself by trying to make a controller that completed the square (or any regular n-sided polygon) as quickly, and precisely as possible. That would involve a mix of trying to model the Neato's dynamics quantitatively in order to achieve a strong approximation of constants I could plug into a PID controller for critical damping, and experimentally nudging the constants to see if I could improve accuracy, precision, and speed from there.
  
@@ -90,7 +90,7 @@ This controller could be improved with the addition of more information from the
 This iteration is found in `scripts/wallfollower_1.py`. Here is a helpful visual which helps to illustrate how the code works.
  
 <!-- <img src="pics/wall.jpg" alt="drawing" height="400"/> -->
-<img alt="Iteration 1 Drawing" height="400"/>
+<img src="pics/average_corner.jpg" alt="Iteration 1 Drawing" height="400"/>
  
 The `WallFollowerNode` grabs a sub selection of points to the right of the Neato from its scan, which it stores in what we will call vector `P`. The number of points, the center of the subselection, and the range of the subselection can all be easily modified in software. Any points in the specified range that were too far for the lidar to measure are not included in the subselection.
  
@@ -119,7 +119,7 @@ This control scheme simply does not take into account enough information about t
 ### Iteration 2: Don't Crash
 This iteration is found in `scripts/wallfollower_2.py`. Here is a helpful visual which helps to illustrate how the code works.
  
-<img alt="Iteration 2 Drawing" height="400"/>
+<img src="pics/too_close.jpg" alt="Iteration 2 Drawing" height="400"/>
  
 The `WallFollowerNode` behaves almost exactly as it does for Iteration 1. The key difference is that now, the wall follower switches between two states, "wall following" and "turning left". In addition to sub selecting points for line approximation, the `WallFollowerNode` also checks the front-most point in the lidar scan to determine whether or not the Neato is about to crash into a wall. If the front-most point's distance drops below a certain threshold, the `WallFollerNode` takes evasive action and switches from its "wall following" state to its ``turning left" state. Once the front-most point is far enough away so that its distance goes above the threshold, the `WallFollowerNode` automatically switches back to "wall following".
  
@@ -134,6 +134,112 @@ I've mostly been testing these iterations in closed environments where I have co
  
 The smoothness of this controller is limited by the fact that it's proportional, so the controller cannot be critically damped. This is further made difficult by the fact that the Neato has a wide range of possible turn angles, where sometimes it has to only slightly adjust its heading and other times it has to make a sharp turn around a corner. The proportional controller is a compromise between enabling the Neato to make sharp enough turns to not miss corners and not overcorrecting when the heading needs only a slight adjustment. A much smoother controller would utilize PID control or another creative, non-linear method.
  
- 
- 
+## Person Following
+### Objective
+Detect and follow a person.
 
+### Overall Design
+The code for this is in `scripts/human_follow.py`.
+
+I designed a simple algorithm that uses the "center of mass" technique to find a person in front of the Neato. The algorithm subselects the points from the lidar scan that come from the front of the Neato, between 30 and -30 degrees, averages out the positions of the points, and determines that average to be the center of the person.
+
+The Neato uses a proportional controller to turn towards the center of the person, and another proprtional controller to drive towards the person until the Neato is half a meter away from the person. We can see this formalized here:
+
+`angular_velocity = proportional_constant * (average(P_x) / average(P_y))`
+
+`linear_velocity = proportional_constant * (distance_to_human - 0.5)`
+
+where;
+
+`P_x` is all of the x components of the subselected points
+
+`P_y` is all of the y components of the subselected points
+
+If the Neato ever loses sight of the person, it spins in place in the direction it last saw the person until it sees them again. Unfortunately, this means that if the person goes beyond a certain range, the Neato simply spins in place forever.
+
+### Performance
+
+![Sphere Follower Demo](gifs/human_follow.gif)
+
+Since I didn't have a strong enough wifi connection during development, I couldn't actually load in a person-like object into gazebo for testing, so this would really be more aptly named, "sphere follower". Luckily I found that the sphere was the perfect test for this in gazebo since it tends to roll away as soon as any force acts on it. That makes it perfect for ensuring that the Neato can actually follow a moving object.
+
+We can see that the Neato performs well in staying aligned with the sphere, and being sure not to crash into it unless I've purposely placed the sphere directly on the Neato. We can also see that the Neato successfully drives up to the sphere, and follows it an appropriate distance, speeding up whenever the sphere begins to roll too far away.
+
+### Edge Cases and Limitations
+
+This is a highly limited implementation of a human follower, and has several limitations. I think it's most glaring flaw is that it has no way of knowing what it's actually looking at. It just assumes that any points within a 60 degree field of view must be a human, and that it must follow that. This means that the Neato can be easily fooled into following just about any object, like the sphere I used for testing, instead of exclusively following humans. This assumption also means that the Neato can't distinguish between several objects in its field of view. If I placed two spheres right in front of the Neato, it would likely average them out, and drive right between them. I think the best remedy to this would be to create an additional layer of data processing that specifically looks for two circular clusters representing legs, finds the center between them, and feeds that into the controllers for human following.
+
+## Obstacle Avoidance
+### Objective
+Drive forward and reactively avoid obstacles.
+
+### Overall Design
+The code for this is in `scripts/basic_obstacle_avoid.py`.
+
+I decided to implement what I anticpiated to be a simple obstacle avoidance algorithm where the Neato would simply turn 90 degrees when it saw an obstacle until it was clear of the obstacle to proceed on its original path. I quickly learned that I had somehow managed to get to this point in the project without having a clear understanding of the reference frames I had used for the previous behaviours, since I had mostly relied on what the Neato saw directly from its lidar. This made an otherwise quite simple behavior quite complicated, as I quickly saw all of my previous assumptions fly out the window. To make matters worse, I wanted to use states from previous beahviors, namely the turning from `drive_square.py`, and I realized that I hadn't created a nice software architecture that actually made my code modular.
+
+### Performance
+
+![Obstacle Avoidance Demo](gifs/basic_obstacle_avoid.gif)
+
+Despite those challenges, I did manage to create a basic obstacle avoidance algorithm. The Neato drives until any point in front of it, and between the sides of the Neato, is closer than half a meter. At that point, the Neato stops, turns left until it hits 90 degrees, and begins driving forward. The Neato keeps driving until the closest point from the obstacle is further than half a meter away. Finally, the Neato turns right by 90 degrees and proceeds on its original path until it sees another obstacle.
+
+### Edge Cases and Limitations
+
+This implementation is absolutely riddled with limitations. The biggest one is likely the fact that the Neato will always turn 90 degrees, and always drive until it's half a meter away from any points. This leaves absolutely no space for slanted walls, curved objects, moving objects, corners, and a mulitude of other features that could appear in a less fabricated setting. If I were going to make a tweak to make this algorithm better, I would put the Neato into wall follow mode when it encounters an obstacle, until it gets clear of the obstacle, at which point it can stop wall following the obstacle, and simply go back to it's original objective.
+
+## Bonus Behavior: Tackle
+### Objective
+Combine two or more earlier behaviors into a finite state-controller OR implement a new behavior using finite state control.
+
+My chosen objective is: Create a new behavior in which the Neato slowly sneaks up on an object before tackling it like a cheetah.
+
+### Overall Design
+
+The code for this is in `scripts/tackle.py`
+
+The design for this quite similar to the human follower I created earlier, but in my opinion, a bit more fun. It utilizes three states:
+
+1. Search
+
+2. Sneak and Tackle
+
+3. Victory
+
+First, the Neato spins around looking for any object within a 60 degree field of view. When the Neato spots an object (or really any points within its field of view), the Neato begins slowly sneaking towards the center of that object. The controller determining the Neato's linear velocity is specifically designed to move the Neato slowly when it's far away from its target, and very quickly as soon as the Neato gets within a certain range. If the Neato successfully tackles the object, its bump sensor should be triggered, at which point, the Neato has decided that it's victorious and stops moving, unless of course, the object starts moving again.
+
+### Performance
+
+![Tackle Demo](gifs/tackle.gif)
+
+We can see here quite clearly how much more fun this is than human following.
+
+### Edge Cases and Limitations
+
+One edge case is quite evident in the performance gif. One of the problems with driving Neatos at super high speeds (specifically in simulation) is that they become highly unstable. What's actually happening in the gif when the Neato zips away is that the Neato is rocking back and forth at a ridiculously high speed. This makes it so that the lidar is constantly reading in that there's something directly in front of the Neato, when in reality, it's just constantly catching a glimpse of the floor. This could be improved by having the Neato take into account its own pitch when processing its point data.
+
+Also, with this behavior, I could place a brick wall in front of the Neato and it would literally fly towards it at full speed. This is not very intelligent tackling code.
+
+## Code Structure
+I decided to make each behavior self contained in its own Python script as its own node for this project. Each behavior is an object in Python, and a node in ROS. I experimented with different ways of switching states, at first using an attribute that stored a string with the name of the appropriate state that was checked in the main loop so that the appropriate actions could be taken by the Neato. Then, I upped my game and made the state attribute store a function that _was_ the code for that state. Since Python is dynamically typed, and everything is an object, I was able to set up something like so:
+
+```
+while not rospy.is_shutdown():
+    if self.updateUserInput() == "SHUTDOWN":
+        break
+    elif self.isRunning():
+        self.state = self.state()
+    else:
+        self.pub.publish(Twist())
+    r.sleep()
+```
+
+The important take-away from this chunk of code is the `self.state = self.state()`. My state might be a method called `followRightWallState()`, and when this code runs, `state()` will alias to `followRightWallState()`, and the code for that method will be executed. At the end of the function, I could either switch states by returning a different state method, or keep the same state by having the state return its own method. This was nice for the simple state machines, but whenever I had more than two states, this quickly became a hassle. I think it would have been better for me to have leveraged ROS nodes and an arbiter for this, and have the arbiter deicde when to switch states instead of making each individual state responsible for knowing when to switch states.
+
+You'll also notice that there's a `self.updateUserInput()` method that's being called. Early on in the project, I decided that I wanted to be able to give my ROS nodes keyboard commands while they were running. My baseline intention was so that a node would only start moving the Neato when I hit enter, and always ESTOP when I hit space. What I really hoped for, though, was parameter tunning through keyboard input while the node was running. That never came to fruition, though, likely because it wasn't particularly useful for these behaviors and because it wasn't at the forefront of my mind the whole time.
+
+If you go through the individual scripts for each of these behaviors, you'll notice that the code becomes cleaner and more organized up until the third wall follower. At this point, maintaining clean code became more hassle than it was worth, and every node is called `WallFollower`. I'm considering either creating some kind of ROS boilerplate code for myself to make creating new ROS nodes more painless, and potentially even automating the part where I would manually have to go through and change all of the variable names that correspond to the name of the node.
+
+## Final Reflection
+
+I made a lot of mistakes on this project. I think my biggest one was not taking my time to visualize and correct all the assumptions I was making about the different reference frames I was using along the way. I jumped right into programming behaviors without taking the time to make sure that what I thought would be a positive x would in fact be positive, and that angles were aligned how I thought they were. In future projects, I'm going to focus more on that part early on.
