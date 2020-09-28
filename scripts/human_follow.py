@@ -4,6 +4,7 @@ import rospy
 # from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Int8MultiArray
 
 import random
 import numpy as np
@@ -20,7 +21,7 @@ import termios
 class WallFollowNode(object):
     def __init__(self):
         rospy.init_node('wall_follow')
-        rospy.Subscriber('/scan', LaserScan, self.callbackFunc)
+        rospy.Subscriber('/scan', LaserScan, self.scanCallbackFunc)
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         self.key = None
 
@@ -51,9 +52,11 @@ class WallFollowNode(object):
     def keyWasPressed(self):
         return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
 
-    def callbackFunc(self, msg):
+    def scanCallbackFunc(self, msg):
         # Don't update if all lidar data is out of range
         if all(np.isinf(range_) for range_ in msg.ranges):
+            self.points_r_theta = None
+            self.points_x_y = None
             return None
 
         # Setup data containers
@@ -81,11 +84,6 @@ class WallFollowNode(object):
                 y = range_ * np.sin((angle)*3.14/180.0)
 
                 self.points_x_y.append((x, y))
-        
-        # if np.isinf(msg.ranges[0]):
-        #     self.front_range = self.max_front_range + 0.01
-        # else:
-        #     self.front_range = msg.ranges[0]
 
     def updateDesiredAngle(self):
         # Calculate the center of the cluster of points
@@ -112,36 +110,9 @@ class WallFollowNode(object):
         # NOTE: The lidar is at 0,0
         slope = center_y/center_x
 
+        # Find the distance to the center
+        self.obj_range = np.linalg.norm([center_x, center_y])
         self.wall_slope = slope
-
-
-        # # get a best fit line through the points
-        # # returns True if angle updated successfully
-
-        # # Check that we have enough inefo to continue
-        
-
-        # # print(self.points_x_y,'\r')
-        # num_points = len(self.points_x_y)
-
-        # # Convert xy list to numpy array
-        # # print(type(num_points),'\r')
-        
-
-        # # print("xs", xs,'\r')
-        # # print("ys", ys, '\r')
-
-        # xmin, xmax = min(xs), max(xs)
-        # pfit, stats = Polynomial.fit(xs, ys, 1, full=True, window=(xmin, xmax), domain=(xmin, xmax))
-        # _, slope = pfit
-        # # print("slope: ", slope, '\r')
-        # # print("tan slope: ", np.arctan(slope), '\r')
-        # # print("desired angle: ", np.arctan(slope), '\r')
-
-        # # Turn that into an angle
-        # # print('slope : ', slope,'\r')
-
-        # self.wall_slope = slope
 
         return True
     
@@ -154,7 +125,7 @@ class WallFollowNode(object):
         if not self.start and self.key == "\r":
             self.start = True
             self.active = True
-            print("Robot is starting wall follow mode.\r")
+            print("Robot is starting human follow mode.\r")
         # toggle whether robot is active
         if self.start and self.key == " ":
             self.active = not self.active
@@ -166,26 +137,35 @@ class WallFollowNode(object):
         return self.start and self.active
     
     def followHumanState(self):
+        print("Follow human\r")
         # Follow the wall
         # print("Follow wall. ",self.front_range,"\r")
-
-        # # Switch states if we are going to crash
-        # if self.front_range and self.front_range < self.max_front_range:
-        #     return self.turnLeftState()
 
         twist_msg = Twist()
 
         # Update the desired angle
         if self.updateDesiredAngle():
-            twist_msg.linear.x = 0.3
+            # twist_msg.linear.x = 0.3
+
+            # Run linear control based on distance
+            # Faster when further away, slower when closer
+            if self.obj_range < 0.5:
+                twist_msg.linear.x = 0.0
+
+            else:
+                twist_msg.linear.x = 2.0/3.0 * (self.obj_range-0.5)
+                if twist_msg.linear.x > 2.0:
+                    twist_msg.linear.x = 2.0
 
             # Run proportional control based on slope
-            twist_msg.angular.z = self.wall_slope
+            twist_msg.angular.z = 2 * self.wall_slope
 
             # print(self.wall_slope, '|', twist_msg.angular.z,'\r')
 
             # Enforce limits on angular velocity
-            if twist_msg.angular.z > self.max_angular_speed:
+            if np.abs(twist_msg.angular.z) < 0.1:
+                twist_msg.angular.z = 0.0
+            elif twist_msg.angular.z > self.max_angular_speed:
                 twist_msg.angular.z = self.max_angular_speed
 
             elif twist_msg.angular.z < - self.max_angular_speed:
@@ -199,9 +179,7 @@ class WallFollowNode(object):
         return self.searchForHumanState
     
     def searchForHumanState(self):
-        # print("Turn left. ",self.front_range,"\r")
-        # Turn left until crash succesfully avoided
-
+        print("Search for human\r")
         # Check if you've found a human
         if self.points_x_y and len(self.points_x_y) > 1:
             return self.followHumanState()
