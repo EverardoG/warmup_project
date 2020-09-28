@@ -2,7 +2,7 @@
 This is my fork of the repo for the Olin Computational Robotics warmup project.
  
 In `scripts`, you'll find all the scripts relevant to this project.
-In `bags`, you'll find a `README.md` linking to a Google Drive Folder with the relevant ROS bags.
+In `bags`, you'll find all of the relevant ROS bags.
  
 In this write-up, you'll find detailed explanations of each behavior that I implemented, as well as a brief overview of my software architecture, and a reflection on the project. The behaviors include teleop, driving in a square, wall following, human following, obstacle avoidance, and a fun bonus behavior.
  
